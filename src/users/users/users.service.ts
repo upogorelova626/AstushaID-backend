@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 import { PrismaService } from 'src/prisma/prisma/prisma.service';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { userPublicSelect } from '../selectors/user-public.select';
+import { ChangePasswordDto } from '../dto/change-password.dto';
+import * as bcrypt from 'bcryptjs';
+import { DeleteAccountDto } from '../dto/delete-account.dto';
 
 @Injectable()
 export class UsersService {
@@ -66,6 +73,84 @@ export class UsersService {
       },
       data: dto,
       select: userPublicSelect,
+    });
+  }
+
+  async changePassword(
+    userId: string,
+    currentSessionId: string,
+    dto: ChangePasswordDto,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Текущий пароль указан неверно');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          passwordHash,
+        },
+      }),
+
+      this.prisma.session.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          id: {
+            not: currentSessionId,
+          },
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      }),
+    ]);
+  }
+
+  async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Пароль указан неверно');
+    }
+
+    await this.prisma.user.delete({
+      where: {
+        id: userId,
+      },
     });
   }
 }

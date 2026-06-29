@@ -1,7 +1,18 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBody,
   ApiCookieAuth,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
@@ -11,8 +22,10 @@ import {
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import type { CurrentUserPayload } from '../../auth/types/current-user.type';
+import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { UsersService } from './users.service';
+import { DeleteAccountDto } from '../dto/delete-account.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -49,6 +62,46 @@ export class UsersController {
     @Body() dto: UpdateCurrentUserDto,
   ) {
     return this.usersService.updateCurrentUser(user.id, dto);
+  }
+
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('accessToken')
+  @ApiBody({
+    type: ChangePasswordDto,
+  })
+  @ApiNoContentResponse({
+    description: 'Пароль успешно изменён',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Пользователь не авторизован или текущий пароль неверный',
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async changePassword(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.usersService.changePassword(user.id, user.sessionId, dto);
+  }
+
+  @Delete('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('accessToken')
+  @ApiBody({
+    type: DeleteAccountDto,
+  })
+  @ApiNoContentResponse({
+    description: 'Аккаунт успешно удалён',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Пользователь не авторизован или пароль неверный',
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteMe(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: DeleteAccountDto,
+  ): Promise<void> {
+    await this.usersService.deleteAccount(user.id, dto);
   }
 
   @Get(':userId')
