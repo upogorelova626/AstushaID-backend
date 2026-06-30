@@ -1,12 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { UserTheme } from '@prisma/client';
-import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsUrl,
-  MaxLength,
-} from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateCurrentUserDto {
   @ApiPropertyOptional({
@@ -44,29 +37,4 @@ export class UpdateCurrentUserDto {
   @IsString()
   @MaxLength(1000)
   about?: string;
-
-  @ApiPropertyOptional({
-    example: 'https://example.com/avatar.png',
-  })
-  @IsOptional()
-  @IsString()
-  @IsUrl()
-  avatarUrl?: string;
-
-  @ApiPropertyOptional({
-    example: 'avatars/user-id/avatar.png',
-    maxLength: 300,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(300)
-  avatarKey?: string;
-
-  @ApiPropertyOptional({
-    enum: UserTheme,
-    example: UserTheme.DARK,
-  })
-  @IsOptional()
-  @IsEnum(UserTheme)
-  theme?: UserTheme;
 }

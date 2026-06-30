@@ -10,6 +10,7 @@ import { userPublicSelect } from '../selectors/user-public.select';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import * as bcrypt from 'bcryptjs';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
+import { UpdateUserThemeDto } from '../dto/update-theme.dto';
 
 @Injectable()
 export class UsersService {
@@ -65,13 +66,29 @@ export class UsersService {
   }
 
   async updateCurrentUser(userId: string, dto: UpdateCurrentUserDto) {
+    try {
+      return await this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: dto,
+        select: userPublicSelect,
+      });
+    } catch {
+      throw new NotFoundException('Пользователь не найден');
+    }
+  }
+
+  async updateTheme(userId: string, dto: UpdateUserThemeDto) {
     await this.findPublicById(userId);
 
     return this.prisma.user.update({
       where: {
         id: userId,
       },
-      data: dto,
+      data: {
+        theme: dto.theme,
+      },
       select: userPublicSelect,
     });
   }

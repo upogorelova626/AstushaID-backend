@@ -26,6 +26,7 @@ import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { UsersService } from './users.service';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
+import { UpdateUserThemeDto } from '../dto/update-theme.dto';
 
 @ApiTags('Users')
 @Controller('users')
@@ -113,5 +114,24 @@ export class UsersController {
   })
   findById(@Param('userId') userId: string) {
     return this.usersService.findPublicById(userId);
+  }
+
+  @Patch('me/theme')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('accessToken')
+  @ApiBody({
+    type: UpdateUserThemeDto,
+  })
+  @ApiOkResponse({
+    description: 'Тема текущего пользователя обновлена',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Пользователь не авторизован',
+  })
+  updateTheme(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpdateUserThemeDto,
+  ) {
+    return this.usersService.updateTheme(user.id, dto);
   }
 }
