@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -10,11 +11,14 @@ import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import type { Request } from 'express';
 
+import { MailService } from '../../mail/mail.service';
 import { PrismaService } from '../../prisma/prisma/prisma.service';
-import { UserActivityService } from 'src/users/user-activity/user-activity.sevice';
+import { UserActivityService } from 'src/users/user-activity/user-activity.service';
 import { UsersService } from '../../users/users/users.service';
+import { ConfirmPasswordResetDto } from '../dto/confirm-password-reset.dto';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { LoginDto } from '../dto/login.dto';
+import { RequestPasswordResetDto } from '../dto/request-password-reset.dto';
 import type { AccessTokenPayload } from '../types/token-payload.type';
 
 interface AuthTokens {
@@ -29,6 +33,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly userActivityService: UserActivityService,
+    private readonly mailService: MailService,
   ) {}
 
   async createAccount(dto: CreateAccountDto, request: Request) {
@@ -164,7 +169,7 @@ export class AuthService {
     };
   }
 
-  async logout(refreshToken: string | undefined): Promise<void> {
+  async logout(refreshToken: string | undefined) {
     if (!refreshToken) {
       return;
     }
@@ -180,6 +185,101 @@ export class AuthService {
         revokedAt: new Date(),
       },
     });
+  }
+
+  async requestPasswordReset(dto: RequestPasswordResetDto) {
+    const email = dto.email.toLowerCase().trim();
+
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      return;
+    }
+
+    await this.prisma.passwordResetToken.updateMany({
+      where: {
+        userId: user.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashPasswordResetToken(token);
+
+    const expiresAt = new Date();
+
+    expiresAt.setMinutes(expiresAt.getMinutes() + 30);
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:4202';
+    const resetUrl = `${frontendUrl}/auth/reset-password?token=${token}`;
+
+    await this.mailService.sendPasswordResetEmail(user.email, resetUrl);
+  }
+
+  async confirmPasswordReset(dto: ConfirmPasswordResetDto) {
+    const tokenHash = this.hashPasswordResetToken(dto.token);
+
+    const resetToken = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException(
+        'Ссылка для сброса пароля недействительна или устарела',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: {
+          id: resetToken.userId,
+        },
+        data: {
+          passwordHash,
+        },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: {
+          id: resetToken.id,
+        },
+        data: {
+          usedAt: new Date(),
+        },
+      }),
+      this.prisma.session.updateMany({
+        where: {
+          userId: resetToken.userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      }),
+    ]);
+
+    await this.userActivityService.createActivity(
+      resetToken.userId,
+      UserActivityAction.PASSWORD_CHANGED,
+    );
   }
 
   private async createSessionAndTokens(
@@ -243,15 +343,19 @@ export class AuthService {
     };
   }
 
-  private generateRefreshToken(): string {
+  private generateRefreshToken() {
     return randomBytes(64).toString('hex');
   }
 
-  private hashRefreshToken(refreshToken: string): string {
+  private hashRefreshToken(refreshToken: string) {
     return createHash('sha256').update(refreshToken).digest('hex');
   }
 
-  private getRefreshTokenExpiresAt(): Date {
+  private hashPasswordResetToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private getRefreshTokenExpiresAt() {
     const expiresAt = new Date();
     const days = Number(process.env.JWT_REFRESH_EXPIRES_DAYS ?? 30);
 
@@ -260,7 +364,7 @@ export class AuthService {
     return expiresAt;
   }
 
-  private getRequestUserAgent(request: Request): string | null {
+  private getRequestUserAgent(request: Request) {
     const userAgent = request.headers['user-agent'];
 
     if (Array.isArray(userAgent)) {
@@ -270,7 +374,7 @@ export class AuthService {
     return userAgent ?? null;
   }
 
-  private getRequestIp(request: Request): string | null {
+  private getRequestIp(request: Request) {
     const forwardedFor = request.headers['x-forwarded-for'];
 
     if (Array.isArray(forwardedFor)) {

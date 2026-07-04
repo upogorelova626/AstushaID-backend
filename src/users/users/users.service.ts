@@ -8,7 +8,7 @@ import * as bcrypt from 'bcryptjs';
 import type { Request } from 'express';
 
 import { PrismaService } from 'src/prisma/prisma/prisma.service';
-import { UserActivityService } from '../user-activity/user-activity.sevice';
+import { UserActivityService } from '../user-activity/user-activity.service';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';

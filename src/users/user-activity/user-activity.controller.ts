@@ -2,7 +2,7 @@ import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { UserActivityService } from './user-activity.sevice';
+import { UserActivityService } from './user-activity.service';
 
 type AuthenticatedRequest = Request & {
   user: {

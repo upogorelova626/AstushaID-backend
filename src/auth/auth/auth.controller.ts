@@ -8,10 +8,12 @@ import {
   Res,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -24,8 +26,10 @@ import {
   accessTokenCookieOptions,
   refreshTokenCookieOptions,
 } from '../constants/auth-cookie.constants';
+import { ConfirmPasswordResetDto } from '../dto/confirm-password-reset.dto';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { LoginDto } from '../dto/login.dto';
+import { RequestPasswordResetDto } from '../dto/request-password-reset.dto';
 import { AuthService } from './auth.service';
 
 interface RequestWithCookies extends Request {
@@ -103,15 +107,41 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiCookieAuth('refreshToken')
+  @ApiNoContentResponse({
+    description: 'Пользователь успешно вышел из аккаунта',
+  })
   async logout(
     @Req() request: RequestWithCookies,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<void> {
+  ) {
     const refreshToken = request.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
 
     await this.authService.logout(refreshToken);
 
     this.clearAuthCookies(response);
+  }
+
+  @Post('password-reset/request')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBody({ type: RequestPasswordResetDto })
+  @ApiNoContentResponse({
+    description: 'Письмо для сброса пароля отправлено, если email существует',
+  })
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    await this.authService.requestPasswordReset(dto);
+  }
+
+  @Post('password-reset/confirm')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBody({ type: ConfirmPasswordResetDto })
+  @ApiNoContentResponse({
+    description: 'Пароль успешно изменён',
+  })
+  @ApiBadRequestResponse({
+    description: 'Ссылка для сброса пароля недействительна или устарела',
+  })
+  async confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {
+    await this.authService.confirmPasswordReset(dto);
   }
 
   private setAuthCookies(
@@ -120,7 +150,7 @@ export class AuthController {
       accessToken: string;
       refreshToken: string;
     },
-  ): void {
+  ) {
     response.cookie(
       ACCESS_TOKEN_COOKIE_NAME,
       tokens.accessToken,
@@ -134,7 +164,7 @@ export class AuthController {
     );
   }
 
-  private clearAuthCookies(response: Response): void {
+  private clearAuthCookies(response: Response) {
     response.clearCookie(ACCESS_TOKEN_COOKIE_NAME, {
       path: '/',
     });
