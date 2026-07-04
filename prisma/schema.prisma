@@ -13,6 +13,14 @@ enum UserTheme {
   SYSTEM
 }
 
+enum UserActivityAction {
+  LOGIN
+  PASSWORD_CHANGED
+  SESSION_TERMINATED
+  ALL_SESSIONS_TERMINATED
+  ACCOUNT_DELETED
+}
+
 model User {
   id           String @id @default(uuid())
   login        String @unique
@@ -35,6 +43,7 @@ model User {
 
   sessions            Session[]
   passwordResetTokens PasswordResetToken[]
+  activities          UserActivity[]
 
   @@map("users")
 }
@@ -47,12 +56,16 @@ model Session {
   ipAddress        String?
   expiresAt        DateTime
   revokedAt        DateTime?
+  lastActiveAt     DateTime  @default(now())
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([revokedAt])
+  @@index([expiresAt])
+  @@index([userId, revokedAt])
   @@map("sessions")
 }
 
@@ -68,4 +81,24 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model UserActivity {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action UserActivityAction
+
+  userAgent String?
+  ipAddress String?
+  location  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("user_activities")
 }

@@ -5,10 +5,13 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { JwtSignOptions } from '@nestjs/jwt';
+import { UserActivityAction } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'crypto';
+import type { Request } from 'express';
 
 import { PrismaService } from '../../prisma/prisma/prisma.service';
+import { UserActivityService } from 'src/users/user-activity/user-activity.sevice';
 import { UsersService } from '../../users/users/users.service';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { LoginDto } from '../dto/login.dto';
@@ -25,9 +28,10 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly userActivityService: UserActivityService,
   ) {}
 
-  async createAccount(dto: CreateAccountDto) {
+  async createAccount(dto: CreateAccountDto, request: Request) {
     const email = dto.email.toLowerCase().trim();
     const login = dto.login.toLowerCase().trim();
 
@@ -53,11 +57,20 @@ export class AuthService {
       passwordHash,
     });
 
-    const tokens = await this.createSessionAndTokens({
-      userId: user.id,
-      email: user.email,
-      login: user.login,
-    });
+    const tokens = await this.createSessionAndTokens(
+      {
+        userId: user.id,
+        email: user.email,
+        login: user.login,
+      },
+      request,
+    );
+
+    await this.userActivityService.createActivity(
+      user.id,
+      UserActivityAction.LOGIN,
+      request,
+    );
 
     return {
       user,
@@ -65,7 +78,7 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, request: Request) {
     const user = await this.usersService.findByLoginOrEmail(dto.loginOrEmail);
 
     if (!user) {
@@ -83,11 +96,20 @@ export class AuthService {
 
     const publicUser = await this.usersService.findPublicById(user.id);
 
-    const tokens = await this.createSessionAndTokens({
-      userId: user.id,
-      email: user.email,
-      login: user.login,
-    });
+    const tokens = await this.createSessionAndTokens(
+      {
+        userId: user.id,
+        email: user.email,
+        login: user.login,
+      },
+      request,
+    );
+
+    await this.userActivityService.createActivity(
+      user.id,
+      UserActivityAction.LOGIN,
+      request,
+    );
 
     return {
       user: publicUser,
@@ -132,6 +154,7 @@ export class AuthService {
       data: {
         refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
         expiresAt: this.getRefreshTokenExpiresAt(),
+        lastActiveAt: new Date(),
       },
     });
 
@@ -159,11 +182,14 @@ export class AuthService {
     });
   }
 
-  private async createSessionAndTokens(data: {
-    userId: string;
-    email: string;
-    login: string;
-  }): Promise<AuthTokens> {
+  private async createSessionAndTokens(
+    data: {
+      userId: string;
+      email: string;
+      login: string;
+    },
+    request: Request,
+  ): Promise<AuthTokens> {
     const sessionId = randomUUID();
 
     const tokens = await this.issueTokens({
@@ -178,7 +204,10 @@ export class AuthService {
         id: sessionId,
         userId: data.userId,
         refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
+        userAgent: this.getRequestUserAgent(request),
+        ipAddress: this.getRequestIp(request),
         expiresAt: this.getRefreshTokenExpiresAt(),
+        lastActiveAt: new Date(),
       },
     });
 
@@ -229,5 +258,29 @@ export class AuthService {
     expiresAt.setDate(expiresAt.getDate() + days);
 
     return expiresAt;
+  }
+
+  private getRequestUserAgent(request: Request): string | null {
+    const userAgent = request.headers['user-agent'];
+
+    if (Array.isArray(userAgent)) {
+      return userAgent.join(' ');
+    }
+
+    return userAgent ?? null;
+  }
+
+  private getRequestIp(request: Request): string | null {
+    const forwardedFor = request.headers['x-forwarded-for'];
+
+    if (Array.isArray(forwardedFor)) {
+      return forwardedFor[0] ?? null;
+    }
+
+    if (typeof forwardedFor === 'string') {
+      return forwardedFor.split(',')[0]?.trim() ?? null;
+    }
+
+    return request.ip ?? null;
   }
 }

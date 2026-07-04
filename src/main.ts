@@ -8,7 +8,13 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 function getAllowedOrigins(): string[] {
-  return (process.env.CLIENT_ORIGINS ?? '')
+  const origins = process.env.CLIENT_ORIGINS;
+
+  if (!origins) {
+    return ['http://localhost:4202', 'http://localhost:4200'];
+  }
+
+  return origins
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -44,7 +50,7 @@ async function bootstrap(): Promise<void> {
 
   SwaggerModule.setup('api_id', app, swaggerDocument);
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3002);
 }
 
 void bootstrap();

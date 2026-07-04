@@ -3,18 +3,24 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { UserActivityAction } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
+import type { Request } from 'express';
 
 import { PrismaService } from 'src/prisma/prisma/prisma.service';
-import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
-import { userPublicSelect } from '../selectors/user-public.select';
+import { UserActivityService } from '../user-activity/user-activity.sevice';
 import { ChangePasswordDto } from '../dto/change-password.dto';
-import * as bcrypt from 'bcryptjs';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
+import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { UpdateUserThemeDto } from '../dto/update-theme.dto';
+import { userPublicSelect } from '../selectors/user-public.select';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userActivityService: UserActivityService,
+  ) {}
 
   findByEmail(email: string) {
     return this.prisma.user.findUnique({
@@ -97,6 +103,7 @@ export class UsersService {
     userId: string,
     currentSessionId: string,
     dto: ChangePasswordDto,
+    request: Request,
   ): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: {
@@ -142,6 +149,12 @@ export class UsersService {
         },
       }),
     ]);
+
+    await this.userActivityService.createActivity(
+      userId,
+      UserActivityAction.PASSWORD_CHANGED,
+      request,
+    );
   }
 
   async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {

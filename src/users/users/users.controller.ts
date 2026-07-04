@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Patch,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,15 +19,16 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { Request } from 'express';
 
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import type { CurrentUserPayload } from '../../auth/types/current-user.type';
 import { ChangePasswordDto } from '../dto/change-password.dto';
-import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
-import { UsersService } from './users.service';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
+import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { UpdateUserThemeDto } from '../dto/update-theme.dto';
+import { UsersService } from './users.service';
 
 @ApiTags('Users')
 @Controller('users')
@@ -81,8 +83,14 @@ export class UsersController {
   async changePassword(
     @CurrentUser() user: CurrentUserPayload,
     @Body() dto: ChangePasswordDto,
+    @Req() request: Request,
   ): Promise<void> {
-    await this.usersService.changePassword(user.id, user.sessionId, dto);
+    await this.usersService.changePassword(
+      user.id,
+      user.sessionId,
+      dto,
+      request,
+    );
   }
 
   @Delete('me')
@@ -105,17 +113,6 @@ export class UsersController {
     await this.usersService.deleteAccount(user.id, dto);
   }
 
-  @Get(':userId')
-  @ApiOkResponse({
-    description: 'Публичная информация о пользователе',
-  })
-  @ApiNotFoundResponse({
-    description: 'Пользователь не найден',
-  })
-  findById(@Param('userId') userId: string) {
-    return this.usersService.findPublicById(userId);
-  }
-
   @Patch('me/theme')
   @UseGuards(JwtAuthGuard)
   @ApiCookieAuth('accessToken')
@@ -133,5 +130,16 @@ export class UsersController {
     @Body() dto: UpdateUserThemeDto,
   ) {
     return this.usersService.updateTheme(user.id, dto);
+  }
+
+  @Get(':userId')
+  @ApiOkResponse({
+    description: 'Публичная информация о пользователе',
+  })
+  @ApiNotFoundResponse({
+    description: 'Пользователь не найден',
+  })
+  findById(@Param('userId') userId: string) {
+    return this.usersService.findPublicById(userId);
   }
 }

@@ -47,9 +47,10 @@ export class AuthController {
   })
   async createAccount(
     @Body() dto: CreateAccountDto,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const authResponse = await this.authService.createAccount(dto);
+    const authResponse = await this.authService.createAccount(dto, request);
 
     this.setAuthCookies(response, authResponse.tokens);
 
@@ -67,9 +68,10 @@ export class AuthController {
   })
   async login(
     @Body() dto: LoginDto,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const authResponse = await this.authService.login(dto);
+    const authResponse = await this.authService.login(dto, request);
 
     this.setAuthCookies(response, authResponse.tokens);
 
