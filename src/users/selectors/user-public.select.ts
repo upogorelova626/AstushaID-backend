@@ -7,7 +7,6 @@ export const userPublicSelect = {
   firstName: true,
   lastName: true,
   avatarUrl: true,
-  avatarKey: true,
   position: true,
   about: true,
   emailVerifiedAt: true,

@@ -1,4 +1,7 @@
+import 'multer';
+
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -8,29 +11,36 @@ import * as bcrypt from 'bcryptjs';
 import type { Request } from 'express';
 
 import { PrismaService } from 'src/prisma/prisma/prisma.service';
-import { UserActivityService } from '../user-activity/user-activity.service';
+import { S3Service } from 'src/s3/s3.service';
+
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { UpdateUserThemeDto } from '../dto/update-theme.dto';
 import { userPublicSelect } from '../selectors/user-public.select';
+import { UserActivityService } from '../user-activity/user-activity.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userActivityService: UserActivityService,
+    private readonly s3Service: S3Service,
   ) {}
 
   findByEmail(email: string) {
     return this.prisma.user.findUnique({
-      where: { email },
+      where: {
+        email,
+      },
     });
   }
 
   findByLogin(login: string) {
     return this.prisma.user.findUnique({
-      where: { login },
+      where: {
+        login,
+      },
     });
   }
 
@@ -53,7 +63,9 @@ export class UsersService {
 
   async findPublicById(id: string) {
     const user = await this.prisma.user.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
       select: userPublicSelect,
     });
 
@@ -182,5 +194,73 @@ export class UsersService {
         id: userId,
       },
     });
+  }
+
+  async updateMyAvatar(userId: string, file: Express.Multer.File) {
+    this.validateAvatar(file);
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: {
+        id: userId,
+      },
+      select: {
+        avatarKey: true,
+      },
+    });
+
+    const avatar = await this.s3Service.uploadUserAvatar(userId, file);
+
+    const updatedUser = await this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        avatarUrl: avatar.url,
+        avatarKey: avatar.key,
+      },
+      select: userPublicSelect,
+    });
+
+    if (user.avatarKey) {
+      await this.s3Service.deleteFile(user.avatarKey);
+    }
+
+    return updatedUser;
+  }
+
+  async deleteMyAvatar(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: {
+        id: userId,
+      },
+      select: {
+        avatarKey: true,
+      },
+    });
+
+    if (user.avatarKey) {
+      await this.s3Service.deleteFile(user.avatarKey);
+    }
+
+    return this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        avatarUrl: null,
+        avatarKey: null,
+      },
+      select: userPublicSelect,
+    });
+  }
+
+  private validateAvatar(file: Express.Multer.File) {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Можно загрузить только JPEG, PNG или WEBP',
+      );
+    }
   }
 }
