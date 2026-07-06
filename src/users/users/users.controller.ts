@@ -20,6 +20,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
+import { UpdateEmailTwoFactorDto } from '../dto/update-email-two-factor.dto';
 import { UpdateUserThemeDto } from '../dto/update-theme.dto';
 import { UsersService } from './users.service';
 
@@ -99,5 +100,13 @@ export class UsersController {
     @Body() dto: DeleteAccountDto,
   ) {
     return this.usersService.deleteAccount(req.user.id, dto);
+  }
+
+  @Patch('me/two-factor/email')
+  updateEmailTwoFactor(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpdateEmailTwoFactorDto,
+  ) {
+    return this.usersService.updateEmailTwoFactor(req.user.id, dto);
   }
 }

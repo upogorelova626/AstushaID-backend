@@ -37,4 +37,18 @@ export class MailService {
             `,
     });
   }
+
+  async sendTwoFactorCode(email: string, code: string) {
+    await this.transporter.sendMail({
+      to: email,
+      subject: 'Код подтверждения Astusha ID',
+      html: `
+            <h2>Код подтверждения</h2>
+            <p>Введите этот код для входа в Astusha ID:</p>
+            <h1 style="letter-spacing: 6px;">${code}</h1>
+            <p>Код действует 10 минут.</p>
+            <p>Если это были не вы, просто проигнорируйте письмо.</p>
+        `,
+    });
+  }
 }

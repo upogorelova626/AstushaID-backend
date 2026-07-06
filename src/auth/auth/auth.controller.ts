@@ -30,6 +30,7 @@ import { ConfirmPasswordResetDto } from '../dto/confirm-password-reset.dto';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RequestPasswordResetDto } from '../dto/request-password-reset.dto';
+import { VerifyEmailTwoFactorDto } from '../dto/verify-email-two-factor.dto';
 import { AuthService } from './auth.service';
 
 interface RequestWithCookies extends Request {
@@ -76,6 +77,34 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const authResponse = await this.authService.login(dto, request);
+
+    if ('twoFactorRequired' in authResponse) {
+      return authResponse;
+    }
+
+    this.setAuthCookies(response, authResponse.tokens);
+
+    return authResponse.user;
+  }
+
+  @Post('two-factor/email/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiBody({ type: VerifyEmailTwoFactorDto })
+  @ApiOkResponse({
+    description: 'Код подтверждения успешно проверен',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Код подтверждения недействителен',
+  })
+  async verifyEmailTwoFactor(
+    @Body() dto: VerifyEmailTwoFactorDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const authResponse = await this.authService.verifyEmailTwoFactor(
+      dto,
+      request,
+    );
 
     this.setAuthCookies(response, authResponse.tokens);
 

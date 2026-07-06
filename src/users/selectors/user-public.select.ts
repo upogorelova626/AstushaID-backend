@@ -13,6 +13,7 @@ export const userPublicSelect = {
   theme: true,
   createdAt: true,
   updatedAt: true,
+  emailTwoFactorEnabled: true,
 } satisfies Prisma.UserSelect;
 
 export type PublicUser = Prisma.UserGetPayload<{

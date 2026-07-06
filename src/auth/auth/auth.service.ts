@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { JwtSignOptions } from '@nestjs/jwt';
 import { UserActivityAction } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import type { Request } from 'express';
 
 import { MailService } from '../../mail/mail.service';
@@ -19,6 +19,7 @@ import { ConfirmPasswordResetDto } from '../dto/confirm-password-reset.dto';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RequestPasswordResetDto } from '../dto/request-password-reset.dto';
+import { VerifyEmailTwoFactorDto } from '../dto/verify-email-two-factor.dto';
 import type { AccessTokenPayload } from '../types/token-payload.type';
 
 interface AuthTokens {
@@ -62,25 +63,14 @@ export class AuthService {
       passwordHash,
     });
 
-    const tokens = await this.createSessionAndTokens(
+    return this.finishLogin(
       {
-        userId: user.id,
+        id: user.id,
         email: user.email,
         login: user.login,
       },
       request,
     );
-
-    await this.userActivityService.createActivity(
-      user.id,
-      UserActivityAction.LOGIN,
-      request,
-    );
-
-    return {
-      user,
-      tokens,
-    };
   }
 
   async login(dto: LoginDto, request: Request) {
@@ -99,27 +89,76 @@ export class AuthService {
       throw new UnauthorizedException('Неверный логин или пароль');
     }
 
-    const publicUser = await this.usersService.findPublicById(user.id);
+    if (user.emailTwoFactorEnabled) {
+      return this.createEmailTwoFactorChallenge(user, request);
+    }
 
-    const tokens = await this.createSessionAndTokens(
+    return this.finishLogin(
       {
-        userId: user.id,
+        id: user.id,
         email: user.email,
         login: user.login,
       },
       request,
     );
+  }
 
-    await this.userActivityService.createActivity(
-      user.id,
-      UserActivityAction.LOGIN,
+  async verifyEmailTwoFactor(dto: VerifyEmailTwoFactorDto, request: Request) {
+    const challenge = await this.prisma.emailTwoFactorChallenge.findUnique({
+      where: {
+        id: dto.challengeId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!challenge || challenge.usedAt) {
+      throw new UnauthorizedException('Код подтверждения недействителен');
+    }
+
+    if (challenge.expiresAt < new Date()) {
+      throw new UnauthorizedException('Код подтверждения истёк');
+    }
+
+    if (challenge.attempts >= 5) {
+      throw new UnauthorizedException('Превышено количество попыток');
+    }
+
+    const isCodeValid = await bcrypt.compare(dto.code, challenge.codeHash);
+
+    if (!isCodeValid) {
+      await this.prisma.emailTwoFactorChallenge.update({
+        where: {
+          id: challenge.id,
+        },
+        data: {
+          attempts: {
+            increment: 1,
+          },
+        },
+      });
+
+      throw new UnauthorizedException('Неверный код подтверждения');
+    }
+
+    await this.prisma.emailTwoFactorChallenge.update({
+      where: {
+        id: challenge.id,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    return this.finishLogin(
+      {
+        id: challenge.user.id,
+        email: challenge.user.email,
+        login: challenge.user.login,
+      },
       request,
     );
-
-    return {
-      user: publicUser,
-      tokens,
-    };
   }
 
   async refresh(refreshToken: string | undefined) {
@@ -282,6 +321,80 @@ export class AuthService {
     );
   }
 
+  private async finishLogin(
+    user: {
+      id: string;
+      email: string;
+      login: string;
+    },
+    request: Request,
+  ) {
+    const publicUser = await this.usersService.findPublicById(user.id);
+
+    const tokens = await this.createSessionAndTokens(
+      {
+        userId: user.id,
+        email: user.email,
+        login: user.login,
+      },
+      request,
+    );
+
+    await this.userActivityService.createActivity(
+      user.id,
+      UserActivityAction.LOGIN,
+      request,
+    );
+
+    return {
+      user: publicUser,
+      tokens,
+    };
+  }
+
+  private async createEmailTwoFactorChallenge(
+    user: {
+      id: string;
+      email: string;
+    },
+    request: Request,
+  ) {
+    await this.prisma.emailTwoFactorChallenge.updateMany({
+      where: {
+        userId: user.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    const code = this.generateTwoFactorCode();
+    const codeHash = await bcrypt.hash(code, 10);
+
+    const expiresAt = new Date();
+
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+    const challenge = await this.prisma.emailTwoFactorChallenge.create({
+      data: {
+        userId: user.id,
+        codeHash,
+        userAgent: this.getRequestUserAgent(request),
+        ipAddress: this.getRequestIp(request),
+        expiresAt,
+      },
+    });
+
+    await this.mailService.sendTwoFactorCode(user.email, code);
+
+    return {
+      twoFactorRequired: true,
+      challengeId: challenge.id,
+      email: this.maskEmail(user.email),
+    };
+  }
+
   private async createSessionAndTokens(
     data: {
       userId: string;
@@ -343,6 +456,10 @@ export class AuthService {
     };
   }
 
+  private generateTwoFactorCode() {
+    return randomInt(100000, 1000000).toString();
+  }
+
   private generateRefreshToken() {
     return randomBytes(64).toString('hex');
   }
@@ -353,6 +470,16 @@ export class AuthService {
 
   private hashPasswordResetToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private maskEmail(email: string) {
+    const [name, domain] = email.split('@');
+
+    if (!name || !domain) {
+      return email;
+    }
+
+    return `${name.slice(0, 2)}***@${domain}`;
   }
 
   private getRefreshTokenExpiresAt() {

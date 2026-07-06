@@ -17,6 +17,7 @@ import { ChangePasswordDto } from '../dto/change-password.dto';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
 import { UpdateUserThemeDto } from '../dto/update-theme.dto';
+import { UpdateEmailTwoFactorDto } from '../dto/update-email-two-factor.dto';
 import { userPublicSelect } from '../selectors/user-public.select';
 import { UserActivityService } from '../user-activity/user-activity.service';
 
@@ -261,6 +262,22 @@ export class UsersService {
       throw new BadRequestException(
         'Можно загрузить только JPEG, PNG или WEBP',
       );
+    }
+  }
+
+  async updateEmailTwoFactor(userId: string, dto: UpdateEmailTwoFactorDto) {
+    try {
+      return await this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          emailTwoFactorEnabled: dto.enabled,
+        },
+        select: userPublicSelect,
+      });
+    } catch {
+      throw new NotFoundException('Пользователь не найден');
     }
   }
 }
