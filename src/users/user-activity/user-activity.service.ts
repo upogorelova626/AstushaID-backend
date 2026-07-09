@@ -52,6 +52,8 @@ export class UserActivityService {
       PASSWORD_CHANGED: 'Изменение пароля',
       SESSION_TERMINATED: 'Завершение сессии',
       ALL_SESSIONS_TERMINATED: 'Завершение других сессий',
+      TWO_FACTOR_ENABLED: 'Включение двухфакторной аутентификации',
+      TWO_FACTOR_DISABLED: 'Отключение двухфакторной аутентификации',
       ACCOUNT_DELETED: 'Удаление аккаунта',
     };
 

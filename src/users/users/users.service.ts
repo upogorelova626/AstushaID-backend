@@ -16,16 +16,18 @@ import { S3Service } from 'src/s3/s3.service';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { UpdateCurrentUserDto } from '../dto/update-current-user.dto';
-import { UpdateUserThemeDto } from '../dto/update-theme.dto';
 import { UpdateEmailTwoFactorDto } from '../dto/update-email-two-factor.dto';
+import { UpdateUserThemeDto } from '../dto/update-theme.dto';
 import { userPublicSelect } from '../selectors/user-public.select';
 import { UserActivityService } from '../user-activity/user-activity.service';
+import { UserNotificationsService } from '../user-notifications/user-notifications.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userActivityService: UserActivityService,
+    private readonly userNotificationsService: UserNotificationsService,
     private readonly s3Service: S3Service,
   ) {}
 
@@ -168,6 +170,8 @@ export class UsersService {
       UserActivityAction.PASSWORD_CHANGED,
       request,
     );
+
+    void this.userNotificationsService.sendPasswordChangedNotification(userId);
   }
 
   async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {
@@ -255,6 +259,54 @@ export class UsersService {
     });
   }
 
+  async updateEmailTwoFactor(
+    userId: string,
+    dto: UpdateEmailTwoFactorDto,
+    request: Request,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        emailTwoFactorEnabled: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    if (user.emailTwoFactorEnabled === dto.enabled) {
+      return this.findPublicById(userId);
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        emailTwoFactorEnabled: dto.enabled,
+      },
+      select: userPublicSelect,
+    });
+
+    await this.userActivityService.createActivity(
+      userId,
+      dto.enabled
+        ? UserActivityAction.TWO_FACTOR_ENABLED
+        : UserActivityAction.TWO_FACTOR_DISABLED,
+      request,
+    );
+
+    void this.userNotificationsService.sendTwoFactorChangedNotification(
+      userId,
+      dto.enabled,
+    );
+
+    return updatedUser;
+  }
+
   private validateAvatar(file: Express.Multer.File) {
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -262,22 +314,6 @@ export class UsersService {
       throw new BadRequestException(
         'Можно загрузить только JPEG, PNG или WEBP',
       );
-    }
-  }
-
-  async updateEmailTwoFactor(userId: string, dto: UpdateEmailTwoFactorDto) {
-    try {
-      return await this.prisma.user.update({
-        where: {
-          id: userId,
-        },
-        data: {
-          emailTwoFactorEnabled: dto.enabled,
-        },
-        select: userPublicSelect,
-      });
-    } catch {
-      throw new NotFoundException('Пользователь не найден');
     }
   }
 }

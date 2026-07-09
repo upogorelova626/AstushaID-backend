@@ -18,6 +18,8 @@ enum UserActivityAction {
   PASSWORD_CHANGED
   SESSION_TERMINATED
   ALL_SESSIONS_TERMINATED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
   ACCOUNT_DELETED
 }
 
@@ -41,15 +43,38 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions            Session[]
-  passwordResetTokens PasswordResetToken[]
-  activities          UserActivity[]
-
   emailTwoFactorEnabled Boolean @default(false)
 
-emailTwoFactorChallenges EmailTwoFactorChallenge[]
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  activities               UserActivity[]
+  emailTwoFactorChallenges EmailTwoFactorChallenge[]
+  notificationSettings     UserNotificationSettings?
 
   @@map("users")
+}
+
+model UserNotificationSettings {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  emailNotificationsEnabled    Boolean @default(true)
+  pushNotificationsEnabled     Boolean @default(false)
+  telegramNotificationsEnabled Boolean @default(false)
+
+  loginNotificationsEnabled             Boolean @default(true)
+  passwordChangedNotificationsEnabled   Boolean @default(true)
+  sessionsFinishedNotificationsEnabled  Boolean @default(true)
+  twoFactorNotificationsEnabled         Boolean @default(true)
+  marketingEmailsEnabled                Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_notification_settings")
 }
 
 model EmailTwoFactorChallenge {
@@ -67,6 +92,7 @@ model EmailTwoFactorChallenge {
 
   @@index([userId])
   @@index([expiresAt])
+  @@map("email_two_factor_challenges")
 }
 
 model Session {

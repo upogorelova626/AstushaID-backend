@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { MailService } from '../../mail/mail.service';
 import { PrismaService } from '../../prisma/prisma/prisma.service';
 import { UserActivityService } from 'src/users/user-activity/user-activity.service';
+import { UserNotificationsService } from 'src/users/user-notifications/user-notifications.service';
 import { UsersService } from '../../users/users/users.service';
 import { ConfirmPasswordResetDto } from '../dto/confirm-password-reset.dto';
 import { CreateAccountDto } from '../dto/create-account.dto';
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly userActivityService: UserActivityService,
+    private readonly userNotificationsService: UserNotificationsService,
     private readonly mailService: MailService,
   ) {}
 
@@ -215,15 +217,38 @@ export class AuthService {
 
     const refreshTokenHash = this.hashRefreshToken(refreshToken);
 
-    await this.prisma.session.updateMany({
+    const session = await this.prisma.session.findFirst({
       where: {
         refreshTokenHash,
         revokedAt: null,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!session) {
+      return;
+    }
+
+    await this.prisma.session.update({
+      where: {
+        id: session.id,
       },
       data: {
         revokedAt: new Date(),
       },
     });
+
+    await this.userActivityService.createActivity(
+      session.userId,
+      UserActivityAction.SESSION_TERMINATED,
+    );
+
+    void this.userNotificationsService.sendSessionsFinishedNotification(
+      session.userId,
+    );
   }
 
   async requestPasswordReset(dto: RequestPasswordResetDto) {
@@ -319,6 +344,10 @@ export class AuthService {
       resetToken.userId,
       UserActivityAction.PASSWORD_CHANGED,
     );
+
+    void this.userNotificationsService.sendPasswordChangedNotification(
+      resetToken.userId,
+    );
   }
 
   private async finishLogin(
@@ -345,6 +374,8 @@ export class AuthService {
       UserActivityAction.LOGIN,
       request,
     );
+
+    void this.userNotificationsService.sendLoginNotification(user.id, request);
 
     return {
       user: publicUser,

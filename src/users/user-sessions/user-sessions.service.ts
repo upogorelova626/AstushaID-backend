@@ -8,12 +8,14 @@ import type { Request } from 'express';
 
 import { PrismaService } from '../../prisma/prisma/prisma.service';
 import { UserActivityService } from '../user-activity/user-activity.service';
+import { UserNotificationsService } from '../user-notifications/user-notifications.service';
 
 @Injectable()
 export class UserSessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userActivityService: UserActivityService,
+    private readonly userNotificationsService: UserNotificationsService,
   ) {}
 
   async getMySessions(userId: string, currentSessionId: string) {
@@ -73,6 +75,8 @@ export class UserSessionsService {
       UserActivityAction.SESSION_TERMINATED,
       request,
     );
+
+    void this.userNotificationsService.sendSessionsFinishedNotification(userId);
   }
 
   async terminateOtherSessions(
@@ -80,7 +84,7 @@ export class UserSessionsService {
     currentSessionId: string,
     request: Request,
   ) {
-    await this.prisma.session.updateMany({
+    const result = await this.prisma.session.updateMany({
       where: {
         userId,
         revokedAt: null,
@@ -93,11 +97,17 @@ export class UserSessionsService {
       },
     });
 
+    if (!result.count) {
+      return;
+    }
+
     await this.userActivityService.createActivity(
       userId,
       UserActivityAction.ALL_SESSIONS_TERMINATED,
       request,
     );
+
+    void this.userNotificationsService.sendSessionsFinishedNotification(userId);
   }
 
   private getDeviceName(userAgent: string | null) {

@@ -107,6 +107,6 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
     @Body() dto: UpdateEmailTwoFactorDto,
   ) {
-    return this.usersService.updateEmailTwoFactor(req.user.id, dto);
+    return this.usersService.updateEmailTwoFactor(req.user.id, dto, req);
   }
 }
