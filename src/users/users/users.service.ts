@@ -136,7 +136,7 @@ export class UsersService {
     );
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Текущий пароль указан неверно');
+      throw new BadRequestException('Неверный текущий пароль');
     }
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
