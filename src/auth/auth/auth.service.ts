@@ -10,7 +10,6 @@ import { UserActivityAction } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import type { Request } from 'express';
-
 import { MailService } from '../../mail/mail.service';
 import { PrismaService } from '../../prisma/prisma/prisma.service';
 import { UserActivityService } from 'src/users/user-activity/user-activity.service';
